@@ -1,0 +1,74 @@
+name: Aktualizace dat a nasazení
+
+on:
+  schedule:
+    # Denně v 12:17 UTC (14:17 letního / 13:17 zimního času v Praze). FRED zveřejňuje
+    # uzávěry Nasdaq-100 s odstupem, takže web ukazuje poslední den, který už je k dispozici.
+    - cron: "17 12 * * *"
+  workflow_dispatch:        # ruční spuštění: záložka Actions -> Run workflow
+  push:
+    branches: [main]
+    paths:
+      - index.html
+      - update_data.py
+      - requirements.txt
+      - .github/workflows/update.yml
+
+permissions:
+  contents: write           # commit data.json
+  pages: write              # nasazení na GitHub Pages
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Instalace knihoven
+        run: pip install -r requirements.txt
+
+      # Při chybě zdroje (FINRA, FRED) skončí s chybou, nic se nenasadí a web
+      # zůstane na posledních platných datech. GitHub pošle e-mail o selhání.
+      - name: Stažení a výpočet dat
+        run: python update_data.py
+
+      - name: Uložit data.json do repozitáře (jen když se změnil)
+        run: |
+          if [ -n "$(git status --porcelain data.json)" ]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add data.json
+            git commit -m "Aktualizace dat $(date -u +%F)"
+            git push
+          else
+            echo "data.json beze změny"
+          fi
+
+      - name: Připravit web
+        run: |
+          mkdir _site
+          cp index.html data.json _site/
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

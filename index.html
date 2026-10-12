@@ -1,0 +1,688 @@
+<!doctype html>
+<html lang="cs">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Margin debt a Nasdaq-100</title>
+<link rel="icon" href="data:,">
+<meta name="description" content="Margin debt (FINRA) jako percentil a meziroční změna a vzdálenost Nasdaq-100 od 200denního průměru. Data se aktualizují denně.">
+<style>
+  :root {
+    color-scheme: light;
+    --page: #f9f9f7;
+    --surface: #fcfcfb;
+    --ink: #0b0b0b;
+    --ink-2: #52514e;
+    --muted: #898781;
+    --grid: #e1e0d9;
+    --axis: #c3c2b7;
+    --border: rgba(11, 11, 11, 0.10);
+    --series: #2a78d6;
+    --warn-bg: #fff4d6;
+    --warn-ink: #5c4400;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --page: #0d0d0d;
+      --surface: #1a1a19;
+      --ink: #f0efec;
+      --ink-2: #c3c2b7;
+      --muted: #898781;
+      --grid: #2c2c2a;
+      --axis: #383835;
+      --border: rgba(255, 255, 255, 0.10);
+      --series: #3987e5;
+      --warn-bg: #3a2f0b;
+      --warn-ink: #f3d98b;
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --page: #0d0d0d;
+    --surface: #1a1a19;
+    --ink: #f0efec;
+    --ink-2: #c3c2b7;
+    --muted: #898781;
+    --grid: #2c2c2a;
+    --axis: #383835;
+    --border: rgba(255, 255, 255, 0.10);
+    --series: #3987e5;
+    --warn-bg: #3a2f0b;
+    --warn-ink: #f3d98b;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--page);
+    color: var(--ink);
+    font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  .wrap { max-width: 1100px; margin: 0 auto; padding: 24px 16px 48px; }
+
+  header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+  h1 { margin: 0; font-size: 22px; line-height: 1.25; font-weight: 650; }
+  .lead { margin: 4px 0 0; color: var(--ink-2); font-size: 14px; }
+
+  .btn {
+    font: inherit; font-size: 13px; line-height: 1.2;
+    padding: 7px 12px; border-radius: 8px; cursor: pointer;
+    border: 1px solid var(--border); background: var(--surface); color: var(--ink);
+  }
+  header .btn { white-space: nowrap; flex: none; }
+  .btn:hover { background: color-mix(in srgb, var(--ink) 6%, var(--surface)); }
+  .btn[aria-pressed="true"] { background: var(--ink); color: var(--surface); border-color: var(--ink); }
+  .btn:focus-visible, .fig:focus-visible, summary:focus-visible, a:focus-visible {
+    outline: 2px solid var(--series); outline-offset: 2px;
+  }
+
+  .warn {
+    margin: 16px 0 0; padding: 10px 14px; border-radius: 10px; font-size: 14px;
+    background: var(--warn-bg); color: var(--warn-ink);
+  }
+  .warn[hidden], [hidden] { display: none !important; }
+
+  .tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin: 20px 0 16px; }
+  .tile {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+    padding: 14px 18px 14px;
+  }
+  .tile-label { font-size: 13px; color: var(--ink-2); }
+  .tile-value { font-size: 34px; line-height: 1.15; font-weight: 600; margin: 4px 0 2px; }
+  .tile-cap { font-size: 12.5px; color: var(--ink-2); }
+
+  .filters { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0 0 12px; }
+  .filters .group { display: flex; flex-wrap: wrap; gap: 6px; }
+  .filters .spacer { margin-left: auto; }
+
+  .fig {
+    position: relative; margin: 0; background: var(--surface);
+    border: 1px solid var(--border); border-radius: 12px; padding: 4px 14px 14px;
+  }
+  .panel { padding-top: 14px; }
+  .panel h2 { margin: 0; font-size: 14px; font-weight: 650; }
+  .panel p { margin: 2px 0 4px; font-size: 12.5px; color: var(--ink-2); }
+  .panel svg { display: block; width: 100%; touch-action: pan-y; overflow: visible; }
+
+  svg .grid  { stroke: var(--grid); stroke-width: 1; }
+  svg .axis  { stroke: var(--axis); stroke-width: 1.2; }
+  svg .tick  { fill: var(--muted); font-size: 11px; }
+  svg .line  { fill: none; stroke: var(--series); stroke-linejoin: round; stroke-linecap: round; }
+  svg .mark  { fill: var(--series); stroke: var(--surface); stroke-width: 2; }
+  svg .lbl, svg .lbl-strong {
+    font-size: 11.5px; paint-order: stroke; stroke: var(--surface); stroke-width: 3px;
+    stroke-linejoin: round;
+  }
+  svg .lbl { fill: var(--ink-2); }
+  svg .lbl-strong { fill: var(--ink); font-weight: 650; font-size: 12.5px; }
+  svg .xh { stroke: var(--ink-2); stroke-width: 1; }
+
+  .tip {
+    position: absolute; z-index: 5; pointer-events: none; min-width: 218px;
+    background: var(--surface); border: 1px solid var(--axis); border-radius: 8px;
+    padding: 8px 11px 9px; font-size: 12.5px; box-shadow: 0 4px 16px rgba(0, 0, 0, 0.14);
+  }
+  .tip-date { color: var(--ink-2); font-size: 12px; margin-bottom: 4px; }
+  .tip-row { display: grid; grid-template-columns: 14px 1fr auto; column-gap: 8px; align-items: baseline; padding: 2px 0; }
+  .tip-key { display: inline-block; width: 12px; height: 0; border-top: 2px solid var(--series); transform: translateY(-3px); }
+  .tip-name { color: var(--ink-2); }
+  .tip-val { font-weight: 650; color: var(--ink); text-align: right; }
+  .tip-sub { grid-column: 2 / 4; font-size: 11.5px; color: var(--muted); margin-top: -1px; }
+
+  .tablewrap { max-height: 560px; overflow: auto; margin-top: 10px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  td { font-variant-numeric: tabular-nums; }
+  th, td { padding: 6px 10px; text-align: right; border-bottom: 1px solid var(--grid); white-space: nowrap; }
+  th:first-child, td:first-child { text-align: left; }
+  thead th { position: sticky; top: 0; background: var(--surface); color: var(--ink-2); font-weight: 600; border-bottom: 1px solid var(--axis); }
+
+  .links { display: flex; flex-wrap: wrap; gap: 6px 16px; margin: 12px 2px 0; font-size: 13px; color: var(--ink-2); }
+  a { color: var(--series); }
+
+  details { margin-top: 20px; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 12px 16px; }
+  summary { cursor: pointer; font-weight: 600; font-size: 14px; }
+  details ul { margin: 10px 0 4px; padding-left: 20px; color: var(--ink-2); font-size: 14px; }
+  details li { margin: 6px 0; }
+  details strong { color: var(--ink); }
+
+  footer { margin-top: 20px; font-size: 12.5px; color: var(--ink-2); }
+  footer p { margin: 4px 0; }
+
+  @media (max-width: 720px) {
+    .tiles { grid-template-columns: 1fr; gap: 10px; }
+    .tile-value { font-size: 30px; }
+    .fig { padding: 2px 10px 10px; }
+    .tip { min-width: 196px; }
+    h1 { font-size: 20px; }
+  }
+</style>
+</head>
+<body>
+<main class="wrap">
+  <header>
+    <div>
+      <h1>Margin debt a <span style="white-space:nowrap">Nasdaq-100</span></h1>
+      <p class="lead">Kolik si investoři půjčují na akcie a jak daleko je trh od svého 200denního průměru.</p>
+    </div>
+    <button class="btn" id="themeBtn" type="button" aria-pressed="false">Tmavý režim</button>
+  </header>
+
+  <div class="warn" id="stale" role="status" hidden></div>
+  <div class="warn" id="error" role="alert" hidden></div>
+  <noscript><div class="warn">Graf potřebuje zapnutý JavaScript.</div></noscript>
+
+  <section class="tiles" id="tiles" aria-label="Poslední hodnoty"></section>
+
+  <div class="filters" id="filters">
+    <div class="group" id="rangeGroup" role="group" aria-label="Zobrazené období">
+      <button class="btn" type="button" data-range="all" aria-pressed="true">Vše (od 1998)</button>
+      <button class="btn" type="button" data-range="20" aria-pressed="false">20 let</button>
+      <button class="btn" type="button" data-range="10" aria-pressed="false">10 let</button>
+      <button class="btn" type="button" data-range="5" aria-pressed="false">5 let</button>
+      <button class="btn" type="button" data-range="2" aria-pressed="false">2 roky</button>
+    </div>
+    <button class="btn spacer" id="viewBtn" type="button" aria-pressed="false">Zobrazit tabulku</button>
+  </div>
+
+  <figure class="fig" id="fig" tabindex="0"
+          aria-label="Tři grafy se společnou časovou osou. Šipkami vlevo a vpravo procházíš dny, Home a End skočí na začátek a konec.">
+    <div id="charts"></div>
+    <div id="tableView" hidden></div>
+    <div class="tip" id="tip" hidden></div>
+  </figure>
+
+  <div class="links">
+    <span>Stáhnout:</span>
+    <a href="#" id="dlMonthly">CSV měsíční</a>
+    <a href="#" id="dlDaily">CSV denní</a>
+    <a href="data.json">data.json</a>
+  </div>
+
+  <details>
+    <summary>Jak to číst</summary>
+    <ul>
+      <li><strong>Percentil margin debt</strong> (0–100): v kolika procentech dosavadních měsíců byla hodnota nižší. Hodnota 84 znamená, že dnešek je výš než 84 % minulosti. Počítá se z průměru dvou čísel: meziroční změny margin debt a jejího rozdílu proti meziroční změně Nasdaq-100. Každý měsíc se porovnává jen s měsíci před ním a platí až od 12/2002, protože potřebuje pět let historie.</li>
+      <li><strong>Meziroční změna margin debt</strong>: o kolik procent víc si investoři půjčují od brokerů na nákup cenných papírů než před rokem. Rychlý růst páky předcházel vrcholům z let 2000, 2007 i 2021.</li>
+      <li><strong>Vzdálenost od 200denního průměru</strong>: o kolik procent je index nad nebo pod klouzavým průměrem uzavíracích cen za posledních 200 obchodních dnů. Hodně vysoká hodnota znamená, že trh je „natažený“ nad svůj dlouhodobý trend. Počítá se z indexu Nasdaq-100, který ETF QQQ sleduje. Od roku 2016, kam sahá dostupná historie QQQ, se obě řady shodují.</li>
+      <li><strong>Co to neumí:</strong> ukazatele měří náchylnost k riziku, ne načasování. V letech 2007 i 2021 zůstaly vysoko ještě několik měsíců před zlomem.</li>
+      <li><strong>Čerstvost dat:</strong> margin debt zveřejňuje FINRA měsíčně s odstupem několika týdnů, takže poslední měsíc v grafu je vždy o něco starší než Nasdaq-100, který se aktualizuje po každém obchodním dni.</li>
+    </ul>
+  </details>
+
+  <footer>
+    <p id="asof"></p>
+    <p>Zdroje: <a href="https://www.finra.org/rules-guidance/key-topics/margin-accounts/margin-statistics">FINRA Margin Statistics</a>, <a href="https://fred.stlouisfed.org/series/NASDAQ100">FRED (NASDAQ100)</a>. Informativní přehled, nejde o investiční doporučení.</p>
+  </footer>
+</main>
+
+<script>
+(() => {
+  'use strict';
+
+  // ---------- formátování ----------
+  const NB = ' ';
+  const nfx = (d) => new Intl.NumberFormat('cs-CZ', { minimumFractionDigits: d, maximumFractionDigits: d });
+  const nf1 = nfx(1);
+  const MINUS = '\u2212';
+  const neg = (str) => str.replace('-', MINUS);          // typografické minus místo pomlčky
+  const nf0 = nfx(0);
+  const f0 = (v) => neg(nf0.format(v));
+  const f1 = (v) => neg(nf1.format(v));
+  const fPct = (v) => f1(v) + NB + '%';
+  const dayFmt = new Intl.DateTimeFormat('cs-CZ', { day: 'numeric', month: 'numeric', year: 'numeric', timeZone: 'UTC' });
+  const fmtDay = (t) => dayFmt.format(t);
+  const pad2 = (n) => String(n).padStart(2, '0');
+  const fmtMonth = (t) => { const d = new Date(t); return pad2(d.getUTCMonth() + 1) + '/' + d.getUTCFullYear(); };
+  const DAY = 864e5, YEAR = 365.25 * DAY;
+  const ms = (s) => Date.parse(s + 'T00:00:00Z');
+  const nums = (a) => a.map((v) => (v === null ? NaN : v));
+
+  // ---------- stav ----------
+  let D = null;                       // načtená data
+  let range = 'all';
+  let view = 'chart';
+  let panels = [];                    // vykreslené panely (pro hover)
+  let scale = null;                   // společná osa x: {t0, t1, l, pw, W}
+  let lastW = 0;
+  let kbIdx = null;                   // index dne při ovládání klávesnicí
+
+  const $ = (id) => document.getElementById(id);
+  const chartsEl = $('charts'), tipEl = $('tip'), figEl = $('fig');
+
+  // ---------- definice panelů ----------
+  const PANELS = [
+    { id: 'pct', src: 'm', key: 'pct', fixed: [0, 100, 112], suffix: '', zero: false,
+      title: 'Margin debt: percentil vůči vlastní historii',
+      sub: '0–100 · průměr percentilu meziroční změny a rozdílu proti Nasdaq-100, vždy jen vůči předchozím měsícům · od 12/2002 (potřebuje 5 let historie)',
+      fmt: f1, picks: { max: 2, min: 0 }, lw: 2,
+      name: 'Margin debt, percentil' },
+    { id: 'yoy', src: 'm', key: 'yoy', zero: true, suffix: ' %',
+      title: 'Margin debt: meziroční změna',
+      sub: 'v %, proti stejnému měsíci o rok dříve',
+      fmt: fPct, picks: { max: 3, min: 1 }, lw: 2,
+      name: 'Margin debt, meziroční změna' },
+    { id: 'dist', src: 'd', key: 'dist', zero: true, suffix: ' %',
+      title: 'Nasdaq-100 (QQQ): vzdálenost od 200denního průměru',
+      sub: 'v %, denní data · index místo ETF kvůli delší historii (od roku 2016 se s QQQ shoduje)',
+      fmt: fPct, picks: { max: 2, min: 2 }, lw: 1.3,
+      name: 'Nasdaq-100 vs. 200denní průměr' },
+  ];
+
+  // ---------- pomocné funkce ----------
+  function lb(arr, x) { let lo = 0, hi = arr.length; while (lo < hi) { const m = (lo + hi) >> 1; if (arr[m] < x) lo = m + 1; else hi = m; } return lo; }
+  function ub(arr, x) { let lo = 0, hi = arr.length; while (lo < hi) { const m = (lo + hi) >> 1; if (arr[m] <= x) lo = m + 1; else hi = m; } return lo; }
+  function niceStep(raw) { const p = Math.pow(10, Math.floor(Math.log10(raw))); const f = raw / p; return (f <= 1 ? 1 : f <= 2 ? 2 : f <= 5 ? 5 : 10) * p; }
+  const T = (src) => (src === 'm' ? D.m : D.d);
+
+  function viewRange() {
+    const tEnd = Math.max(D.m.t[D.m.t.length - 1], D.d.t[D.d.t.length - 1]);
+    const tFirst = Math.min(D.m.t[0], D.d.t[0]);
+    const tStart = range === 'all' ? tFirst : Math.max(tFirst, tEnd - Number(range) * YEAR);
+    return { tStart, tEnd };
+  }
+
+  // osa x: popisky po letech nebo po čtvrtletích, podle místa
+  function xTicks(tStart, tEnd, pw) {
+    const out = [];
+    for (const k of [3, 6, 12, 24, 60, 120]) {
+      const labelW = k >= 12 ? 52 : 74;
+      const approx = (tEnd - tStart) / (k * YEAR / 12);
+      if (approx <= Math.max(2, Math.floor(pw / labelW)) || k === 120) {
+        let y = new Date(tStart).getUTCFullYear();
+        for (; y <= new Date(tEnd).getUTCFullYear(); y++) {
+          for (let mo = 0; mo < 12; mo++) {
+            if (k >= 12) { if (mo !== 0 || y % (k / 12) !== 0) continue; }
+            else if (mo % k !== 0) continue;
+            const t = Date.UTC(y, mo, 1);
+            if (t < tStart - 31 * DAY || t > tEnd) continue;
+            out.push({ t, label: k >= 12 ? String(y) : pad2(mo + 1) + '/' + y });
+          }
+        }
+        return out;
+      }
+    }
+    return out;
+  }
+
+  // Několik největších maxim a nejmenších minim, od sebe aspoň sepMs. Bod se bere
+  // jen když je opravdu extrémem ve svém okolí (±sepMs/2), takže se nepopisují
+  // obyčejné body, které jen splnily odstup od předchozího popisku.
+  function pickExtremes(Tt, vals, i0, i1, nMax, nMin, sepMs, tLimit) {
+    const idx = [];
+    for (let i = i0; i <= i1; i++) if (Number.isFinite(vals[i]) && Tt.t[i] <= tLimit) idx.push(i);
+    const half = sepMs / 2;
+    const isLocal = (i, sign) => {          // sign +1 = maximum, -1 = minimum
+      const v = vals[i] * sign;
+      for (let j = i - 1; j >= i0 && Tt.t[i] - Tt.t[j] <= half; j--) if (Number.isFinite(vals[j]) && vals[j] * sign > v) return false;
+      for (let j = i + 1; j <= i1 && Tt.t[j] - Tt.t[i] <= half; j++) if (Number.isFinite(vals[j]) && vals[j] * sign > v) return false;
+      return true;
+    };
+    const out = [];
+    const take = (arr, n, kind, sign) => {
+      const chosen = [];
+      for (const i of arr) {
+        if (chosen.length >= n) break;
+        if (chosen.every((j) => Math.abs(Tt.t[i] - Tt.t[j]) >= sepMs) && isLocal(i, sign)) chosen.push(i);
+      }
+      chosen.forEach((i) => out.push({ i, kind }));
+    };
+    if (nMax) take(idx.slice().sort((a, b) => vals[b] - vals[a]), nMax, 'max', 1);
+    if (nMin) take(idx.slice().sort((a, b) => vals[a] - vals[b]), nMin, 'min', -1);
+    return out;
+  }
+
+  // ---------- kreslení panelu ----------
+  function buildPanel(cfg, W, tStart, tEnd) {
+    const Tt = T(cfg.src), vals = Tt[cfg.key];
+    const mg = { l: 50, r: 64, t: 12, b: 26 };
+    const H = W < 520 ? 176 : 206;
+    const pw = W - mg.l - mg.r, ph = H - mg.t - mg.b;
+    const i0 = lb(Tt.t, tStart), i1 = ub(Tt.t, tEnd) - 1;
+    const t0 = tStart - 0.01 * (tEnd - tStart), t1 = tEnd;
+    const sx = (t) => mg.l + ((t - t0) / (t1 - t0)) * pw;
+
+    let lo = Infinity, hi = -Infinity, last = -1;
+    for (let i = i0; i <= i1; i++) { const v = vals[i]; if (Number.isFinite(v)) { if (v < lo) lo = v; if (v > hi) hi = v; last = i; } }
+    let y0, y1, ticks = [];
+    if (cfg.fixed) {
+      y0 = cfg.fixed[0]; y1 = cfg.fixed[2];
+      for (let v = 0; v <= cfg.fixed[1]; v += 20) ticks.push(v);
+    } else {
+      // místo nad maximem a pod minimem pro popisky: 26 px nahoře, 32 px dole
+      const ft = 26 / ph, fb = 32 / ph, total = ((hi - lo) || 1) / (1 - ft - fb);
+      y1 = hi + ft * total; y0 = lo - fb * total;
+      const step = niceStep((y1 - y0) / Math.max(2, ph / 36));
+      for (let v = Math.ceil(y0 / step) * step; v <= y1 + 1e-9; v += step) ticks.push(Math.round(v * 1e6) / 1e6 || 0);
+    }
+    const sy = (v) => mg.t + ((y1 - v) / (y1 - y0)) * ph;
+
+    let s = `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" aria-label="">`;
+    // mřížka a osa y
+    for (const v of ticks) {
+      const yy = sy(v).toFixed(1);
+      s += `<line class="grid" x1="${mg.l}" x2="${W - mg.r}" y1="${yy}" y2="${yy}"/>`;
+      s += `<text class="tick" x="${mg.l - 8}" y="${(sy(v) + 4).toFixed(1)}" text-anchor="end">${(cfg.suffix ? f0(v) + NB + '%' : f0(v))}</text>`;
+    }
+    if (cfg.zero && y0 < 0 && y1 > 0) s += `<line class="axis" x1="${mg.l}" x2="${W - mg.r}" y1="${sy(0).toFixed(1)}" y2="${sy(0).toFixed(1)}"/>`;
+    // osa x
+    const by = (mg.t + ph).toFixed(1);
+    s += `<line class="axis" x1="${mg.l}" x2="${W - mg.r}" y1="${by}" y2="${by}"/>`;
+    for (const tk of xTicks(tStart, tEnd, pw)) {
+      const xx = sx(tk.t).toFixed(1);
+      s += `<line class="axis" x1="${xx}" x2="${xx}" y1="${by}" y2="${(mg.t + ph + 4).toFixed(1)}"/>`;
+      s += `<text class="tick" x="${xx}" y="${(mg.t + ph + 17).toFixed(1)}" text-anchor="middle">${tk.label}</text>`;
+    }
+    // křivka (přeruší se na chybějících hodnotách)
+    let d = '', pen = false;
+    for (let i = i0; i <= i1; i++) {
+      const v = vals[i];
+      if (!Number.isFinite(v)) { pen = false; continue; }
+      d += (pen ? 'L' : 'M') + sx(Tt.t[i]).toFixed(1) + ' ' + sy(v).toFixed(1);
+      pen = true;
+    }
+    s += `<path class="line" stroke-width="${cfg.lw}" d="${d}"/>`;
+
+    // popisky extrémů (s kontrolou překryvu) a poslední hodnota
+    const span = tEnd - tStart;
+    const ex = pickExtremes(Tt, vals, i0, i1, cfg.picks.max, cfg.picks.min, 3 * YEAR, tEnd - Math.min(1.5 * YEAR, 0.15 * span));
+    const boxes = { above: [], below: [] };
+    let labels = '';
+    for (const e of ex) {
+      const x = sx(Tt.t[e.i]), yv = sy(vals[e.i]);
+      const text = `${cfg.fmt(vals[e.i])} · ${fmtMonth(Tt.t[e.i])}`;
+      const w = text.length * 6.2 + 6;
+      const side = e.kind === 'max' ? 'above' : 'below';
+      let bx0 = x - w / 2; bx0 = Math.max(mg.l, Math.min(bx0, W - mg.r - w));
+      if (boxes[side].some((b) => bx0 < b[1] + 6 && bx0 + w > b[0] - 6)) continue;
+      boxes[side].push([bx0, bx0 + w]);
+      labels += `<circle class="mark" cx="${x.toFixed(1)}" cy="${yv.toFixed(1)}" r="4"/>`;
+      labels += `<text class="lbl" x="${bx0.toFixed(1)}" y="${(side === 'above' ? yv - 10 : yv + 19).toFixed(1)}">${text}</text>`;
+    }
+    if (last >= 0) {
+      const x = sx(Tt.t[last]), yv = sy(vals[last]);
+      labels += `<circle class="mark" cx="${x.toFixed(1)}" cy="${yv.toFixed(1)}" r="4.5"/>`;
+      labels += `<text class="lbl-strong" x="${(x + 9).toFixed(1)}" y="${(yv + 4).toFixed(1)}">${cfg.fmt(vals[last])}</text>`;
+    }
+    s += labels;
+    // crosshair
+    s += `<line class="xh" x1="0" x2="0" y1="${mg.t}" y2="${mg.t + ph}" visibility="hidden"/>`;
+    s += `<circle class="mark xhdot" r="4.5" cx="0" cy="0" visibility="hidden"/>`;
+    s += '</svg>';
+
+    const wrap = document.createElement('div');
+    wrap.className = 'panel';
+    const h = document.createElement('h2'); h.textContent = cfg.title;
+    const p = document.createElement('p'); p.textContent = cfg.sub;
+    wrap.append(h, p);
+    wrap.insertAdjacentHTML('beforeend', s);
+    const svg = wrap.querySelector('svg');
+    // popis pro čtečky
+    let aria = `${cfg.title}. `;
+    if (last >= 0) aria += `Poslední hodnota ${cfg.fmt(vals[last])} (${fmtMonth(Tt.t[last])}). `;
+    if (Number.isFinite(hi)) aria += `V zobrazeném období od ${cfg.fmt(lo)} do ${cfg.fmt(hi)}. Všechny hodnoty jsou v tabulce.`;
+    svg.setAttribute('aria-label', aria);
+
+    return { cfg, Tt, vals, i0, i1, sx, sy, svg, wrap,
+             xh: svg.querySelector('.xh'), dot: svg.querySelector('.xhdot'), mg, pw, t0, t1 };
+  }
+
+  function render() {
+    if (!D) return;
+    const W = Math.floor(chartsEl.clientWidth);
+    if (W < 200) return;
+    lastW = W;
+    const { tStart, tEnd } = viewRange();
+    chartsEl.textContent = '';
+    panels = PANELS.map((cfg) => buildPanel(cfg, W, tStart, tEnd));
+    panels.forEach((p) => chartsEl.appendChild(p.wrap));
+    scale = { t0: panels[0].t0, t1: panels[0].t1, l: panels[0].mg.l, pw: panels[0].pw, W };
+    hideCursor();
+    if (view === 'table') renderTable();
+  }
+
+  // ---------- hover, crosshair, tooltip ----------
+  const tipRows = [];
+  (function initTip() {
+    const date = document.createElement('div'); date.className = 'tip-date'; tipEl.appendChild(date);
+    tipEl._date = date;
+    PANELS.forEach(() => {
+      const row = document.createElement('div'); row.className = 'tip-row';
+      const key = document.createElement('span'); key.className = 'tip-key';
+      const name = document.createElement('span'); name.className = 'tip-name';
+      const val = document.createElement('span'); val.className = 'tip-val';
+      const sub = document.createElement('span'); sub.className = 'tip-sub';
+      row.append(key, name, val, sub);
+      tipEl.appendChild(row);
+      tipRows.push({ name, val, sub });
+    });
+  })();
+
+  function nearest(Tt, vals, i0, i1, tm) {
+    let k = lb(Tt.t, tm);
+    if (k > i1) k = i1;
+    if (k < i0) k = i0;
+    if (k > i0 && Math.abs(Tt.t[k - 1] - tm) <= Math.abs(Tt.t[k] - tm)) k--;
+    return Number.isFinite(vals[k]) ? k : -1;
+  }
+
+  function hideCursor() {
+    tipEl.hidden = true;
+    panels.forEach((p) => { p.xh.setAttribute('visibility', 'hidden'); p.dot.setAttribute('visibility', 'hidden'); });
+  }
+
+  // tm = čas v ms; anchor = {x, y} v px vůči figure
+  function showCursor(tm, anchor) {
+    let dayIdx = -1;
+    panels.forEach((p, n) => {
+      const k = nearest(p.Tt, p.vals, p.i0, p.i1, tm);
+      const row = tipRows[n];
+      row.name.textContent = p.cfg.name;
+      if (k < 0) {
+        p.xh.setAttribute('visibility', 'hidden'); p.dot.setAttribute('visibility', 'hidden');
+        row.val.textContent = '—'; row.sub.textContent = 'nedostupné';
+        return;
+      }
+      const x = p.sx(p.Tt.t[k]).toFixed(1), y = p.sy(p.vals[k]).toFixed(1);
+      p.xh.setAttribute('x1', x); p.xh.setAttribute('x2', x); p.xh.setAttribute('visibility', 'visible');
+      p.dot.setAttribute('cx', x); p.dot.setAttribute('cy', y); p.dot.setAttribute('visibility', 'visible');
+      row.val.textContent = p.cfg.fmt(p.vals[k]);
+      row.sub.textContent = p.cfg.src === 'm' ? 'za ' + fmtMonth(p.Tt.t[k]) : fmtDay(p.Tt.t[k]);
+      if (p.cfg.src === 'd') dayIdx = k;
+    });
+    tipEl._date.textContent = dayIdx >= 0 ? fmtDay(D.d.t[dayIdx]) : fmtDay(tm);
+    tipEl.hidden = false;
+    const fw = figEl.clientWidth, fh = figEl.clientHeight, tw = tipEl.offsetWidth, th = tipEl.offsetHeight;
+    let x = anchor.x + 16; if (x + tw > fw - 6) x = anchor.x - 16 - tw;
+    x = Math.max(6, x);
+    const y = Math.max(6, Math.min(anchor.y - th / 2, fh - th - 6));
+    tipEl.style.left = x + 'px'; tipEl.style.top = y + 'px';
+  }
+
+  function timeAt(clientX) {
+    const r = panels[0].svg.getBoundingClientRect();
+    const x = clientX - r.left;
+    const f = Math.max(0, Math.min(1, (x - scale.l) / scale.pw));
+    return scale.t0 + f * (scale.t1 - scale.t0);
+  }
+
+  chartsEl.addEventListener('pointermove', (e) => {
+    if (view !== 'chart' || !panels.length) return;
+    const r = figEl.getBoundingClientRect();
+    showCursor(timeAt(e.clientX), { x: e.clientX - r.left, y: e.clientY - r.top });
+  });
+  chartsEl.addEventListener('pointerleave', () => { if (document.activeElement !== figEl) hideCursor(); });
+
+  figEl.addEventListener('keydown', (e) => {
+    if (view !== 'chart' || !panels.length) return;
+    const dp = panels[2];
+    if (kbIdx === null) kbIdx = dp.i1;
+    const stepN = e.shiftKey ? 21 : 1;
+    if (e.key === 'ArrowLeft') kbIdx -= stepN;
+    else if (e.key === 'ArrowRight') kbIdx += stepN;
+    else if (e.key === 'Home') kbIdx = dp.i0;
+    else if (e.key === 'End') kbIdx = dp.i1;
+    else if (e.key === 'Escape') { kbIdx = null; hideCursor(); return; }
+    else return;
+    e.preventDefault();
+    kbIdx = Math.max(dp.i0, Math.min(dp.i1, kbIdx));
+    const fr = figEl.getBoundingClientRect(), sr = dp.svg.getBoundingClientRect();
+    showCursor(D.d.t[kbIdx], { x: sr.left - fr.left + dp.sx(D.d.t[kbIdx]), y: sr.top - fr.top + 40 });
+  });
+  figEl.addEventListener('focus', () => {
+    if (view !== 'chart' || !panels.length) return;
+    const dp = panels[2];
+    kbIdx = dp.i1;
+    const fr = figEl.getBoundingClientRect(), sr = dp.svg.getBoundingClientRect();
+    showCursor(D.d.t[kbIdx], { x: sr.left - fr.left + dp.sx(D.d.t[kbIdx]), y: sr.top - fr.top + 40 });
+  });
+  figEl.addEventListener('blur', () => { kbIdx = null; hideCursor(); });
+
+  // ---------- tabulka (přístupná varianta grafu) ----------
+  function renderTable() {
+    const { tStart, tEnd } = viewRange();
+    const root = $('tableView');
+    root.textContent = '';
+    const wrap = document.createElement('div'); wrap.className = 'tablewrap';
+    const tbl = document.createElement('table');
+    const cap = document.createElement('caption');
+    cap.textContent = 'Měsíční hodnoty; Nasdaq-100 je k poslednímu obchodnímu dni měsíce.';
+    cap.style.cssText = 'text-align:left;font-size:12.5px;color:var(--ink-2);padding:4px 10px 8px';
+    tbl.appendChild(cap);
+    const thead = document.createElement('thead'), hr = document.createElement('tr');
+    ['Měsíc', 'Margin debt (mld. USD)', 'Meziroční změna', 'Percentil', 'Nasdaq-100 vs. 200denní průměr']
+      .forEach((h) => { const th = document.createElement('th'); th.textContent = h; hr.appendChild(th); });
+    thead.appendChild(hr); tbl.appendChild(thead);
+    const tb = document.createElement('tbody');
+    const m = D.m, d = D.d;
+    for (let i = ub(m.t, tEnd) - 1; i >= lb(m.t, tStart); i--) {
+      const di = ub(d.t, m.t[i]) - 1;
+      const cells = [
+        fmtMonth(m.t[i]),
+        nf1.format(m.debit[i] / 1000),
+        Number.isFinite(m.yoy[i]) ? fPct(m.yoy[i]) : '—',
+        Number.isFinite(m.pct[i]) ? f1(m.pct[i]) : '—',
+        di >= 0 && Number.isFinite(d.dist[di]) ? fPct(d.dist[di]) : '—',
+      ];
+      const tr = document.createElement('tr');
+      cells.forEach((c) => { const td = document.createElement('td'); td.textContent = c; tr.appendChild(td); });
+      tb.appendChild(tr);
+    }
+    tbl.appendChild(tb); wrap.appendChild(tbl); root.appendChild(wrap);
+  }
+
+  function setView(v) {
+    view = v;
+    $('viewBtn').setAttribute('aria-pressed', String(v === 'table'));
+    $('viewBtn').textContent = v === 'table' ? 'Zobrazit grafy' : 'Zobrazit tabulku';
+    chartsEl.hidden = v === 'table';
+    $('tableView').hidden = v !== 'table';
+    hideCursor();
+    if (v === 'table') renderTable(); else render();
+  }
+
+  // ---------- horní dlaždice, upozornění, stažení ----------
+  function lastFinite(a) { for (let i = a.length - 1; i >= 0; i--) if (Number.isFinite(a[i])) return i; return -1; }
+
+  function renderTiles() {
+    const m = D.m, d = D.d;
+    const ip = lastFinite(m.pct), iy = lastFinite(m.yoy), id = lastFinite(d.dist);
+    const defs = [
+      { label: 'Margin debt: percentil', value: f1(m.pct[ip]), cap: `z 0 do 100 · údaj za ${fmtMonth(m.t[ip])}` },
+      { label: 'Margin debt: meziroční změna', value: fPct(m.yoy[iy]), cap: `údaj za ${fmtMonth(m.t[iy])}` },
+      { label: 'Nasdaq-100 vs. 200denní průměr', value: fPct(Math.abs(d.dist[id])),
+        cap: `${d.dist[id] >= 0 ? 'nad' : 'pod'} průměrem · ${fmtDay(d.t[id])}` },
+    ];
+    const root = $('tiles'); root.textContent = '';
+    defs.forEach((x) => {
+      const t = document.createElement('div'); t.className = 'tile';
+      const a = document.createElement('div'); a.className = 'tile-label'; a.textContent = x.label;
+      const b = document.createElement('div'); b.className = 'tile-value'; b.textContent = x.value;
+      const c = document.createElement('div'); c.className = 'tile-cap'; c.textContent = x.cap;
+      t.append(a, b, c); root.appendChild(t);
+    });
+  }
+
+  function renderMeta(j) {
+    const ndxT = D.d.t[D.d.t.length - 1], mT = D.m.t[D.m.t.length - 1];
+    const gen = j.generated ? new Date(j.generated) : null;
+    const genTxt = gen ? new Intl.DateTimeFormat('cs-CZ', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'Europe/Prague' }).format(gen) : '';
+    $('asof').textContent = `Data: Nasdaq-100 k ${fmtDay(ndxT)}, margin debt za ${fmtMonth(mT)}.` + (genTxt ? ` Soubor naposledy přepočten ${genTxt}.` : '');
+    const ageDays = (Date.now() - ndxT) / DAY;
+    if (ageDays > 6) {
+      const w = $('stale');
+      w.textContent = `Pozor: poslední data Nasdaq-100 jsou ze dne ${fmtDay(ndxT)}, tedy starší než týden. Zkontroluj běh denní aktualizace na GitHubu (záložka Actions).`;
+      w.hidden = false;
+    }
+  }
+
+  function download(name, text) {
+    const url = URL.createObjectURL(new Blob([text], { type: 'text/csv;charset=utf-8' }));
+    const a = document.createElement('a'); a.href = url; a.download = name;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 2000);
+  }
+  const iso = (t) => new Date(t).toISOString().slice(0, 10);
+  const cv = (v) => (Number.isFinite(v) ? String(v) : '');
+  $('dlMonthly').addEventListener('click', (e) => {
+    e.preventDefault();
+    const m = D.m; let s = 'month_end,debit_mil_usd,yoy_pct,excess_vs_ndx_pct,percentile\n';
+    for (let i = 0; i < m.t.length; i++) s += [iso(m.t[i]), m.debit[i], cv(m.yoy[i]), cv(m.excess[i]), cv(m.pct[i])].join(',') + '\n';
+    download('margin_debt_monthly.csv', s);
+  });
+  $('dlDaily').addEventListener('click', (e) => {
+    e.preventDefault();
+    const d = D.d; let s = 'date,ndx,dist_200d_pct\n';
+    for (let i = 0; i < d.t.length; i++) s += [iso(d.t[i]), cv(d.ndx[i]), cv(d.dist[i])].join(',') + '\n';
+    download('nasdaq100_200d_distance_daily.csv', s);
+  });
+
+  // ---------- ovládací prvky ----------
+  $('rangeGroup').addEventListener('click', (e) => {
+    const b = e.target.closest('button[data-range]'); if (!b) return;
+    range = b.dataset.range;
+    document.querySelectorAll('#rangeGroup .btn').forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
+    render();
+  });
+  $('viewBtn').addEventListener('click', () => setView(view === 'chart' ? 'table' : 'chart'));
+
+  const root = document.documentElement;
+  const themeBtn = $('themeBtn');
+  const isDark = () => (root.dataset.theme ? root.dataset.theme === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches);
+  function syncThemeBtn() { const d = isDark(); themeBtn.textContent = d ? 'Světlý režim' : 'Tmavý režim'; themeBtn.setAttribute('aria-pressed', String(d)); }
+  try { const s = localStorage.getItem('theme'); if (s === 'light' || s === 'dark') root.dataset.theme = s; } catch (_) { /* úložiště nemusí být dostupné */ }
+  syncThemeBtn();
+  themeBtn.addEventListener('click', () => {
+    const next = isDark() ? 'light' : 'dark';
+    root.dataset.theme = next;
+    try { localStorage.setItem('theme', next); } catch (_) { /* ignoruj */ }
+    syncThemeBtn();
+  });
+  matchMedia('(prefers-color-scheme: dark)').addEventListener('change', syncThemeBtn);
+
+  let raf = 0;
+  new ResizeObserver(() => {
+    cancelAnimationFrame(raf);
+    raf = requestAnimationFrame(() => { if (D && view === 'chart' && Math.abs(chartsEl.clientWidth - lastW) >= 1) render(); });
+  }).observe(chartsEl);
+
+  // ---------- start ----------
+  fetch('data.json', { cache: 'no-cache' })
+    .then((r) => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+    .then((j) => {
+      D = {
+        m: { t: j.monthly.t.map(ms), debit: j.monthly.debit, yoy: nums(j.monthly.yoy), excess: nums(j.monthly.excess), pct: nums(j.monthly.pct) },
+        d: { t: j.daily.t.map(ms), ndx: nums(j.daily.ndx), dist: nums(j.daily.dist) },
+      };
+      renderTiles(); renderMeta(j); render();
+    })
+    .catch((err) => {
+      const e = $('error');
+      e.textContent = 'Data se nepodařilo načíst (' + err.message + '). ' +
+        (location.protocol === 'file:' ? 'Při otevření ze souboru prohlížeč načtení data.json zakazuje. Spusť v této složce „python -m http.server“ a otevři http://localhost:8000.' : 'Zkus stránku načíst znovu.');
+      e.hidden = false;
+    });
+})();
+</script>
+</body>
+</html>
